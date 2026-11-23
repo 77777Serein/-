@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eef5fb">
+  <title>天氣預測｜臺北市</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, "Noto Sans TC", sans-serif; color: #17324d; background: #eef5fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    main { width: min(100%, 560px); }
+    .eyebrow { color: #55718b; letter-spacing: .12em; font-size: .85rem; }
+    h1 { margin: 8px 0; font-size: clamp(2rem, 8vw, 3rem); }
+    .intro { color: #55718b; line-height: 1.7; margin: 0 0 24px; }
+    .card { background: #fff; border-radius: 24px; padding: clamp(24px, 7vw, 40px); box-shadow: 0 18px 50px #244e6b18; }
+    .location { color: #55718b; margin: 0; }
+    .weather-icon { font-size: 4rem; line-height: 1.3; margin: 12px 0 0; }
+    .condition { font-size: 1.35rem; font-weight: 700; margin: 0; }
+    .date { color: #55718b; margin: 8px 0 20px; }
+    .temperatures { display: flex; gap: 24px; font-size: 1.1rem; }
+    .temperatures strong { color: #17324d; }
+    .status { min-height: 1.5em; margin: 20px 0 12px; color: #55718b; }
+    .status.error { color: #a42a36; }
+    button { border: 0; border-radius: 12px; padding: 13px 20px; background: #1769aa; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+    button:hover:not(:disabled) { background: #105384; }
+    button:disabled { opacity: .55; cursor: wait; }
+    footer { margin-top: 20px; color: #55718b; font-size: .9rem; line-height: 1.7; }
+    a { color: #1769aa; }
+    @media (max-width: 420px) { body { padding: 16px; } .temperatures { gap: 16px; font-size: 1rem; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">每日天氣</p>
+    <h1>天氣預測</h1>
+    <p class="intro">查看臺北市未來幾天的天氣與高低溫。按下「換一張」瀏覽不同日期的預報。</p>
+    <section class="card" aria-label="天氣預報" aria-live="polite">
+      <p class="location" id="location">臺北市</p>
+      <p class="weather-icon" id="icon" aria-hidden="true">🌤️</p>
+      <p class="condition" id="condition">準備載入天氣資料</p>
+      <p class="date" id="date"></p>
+      <div class="temperatures"><span>最高 <strong id="high">—</strong></span><span>最低 <strong id="low">—</strong></span></div>
+      <p class="status" id="status" role="status">載入中…</p>
+      <button id="next" type="button" disabled>換一張</button>
+    </section>
+    <footer>資料由 <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a> 提供；詳見 <a href="https://open-meteo.com/en/docs" target="_blank" rel="noopener noreferrer">官方 API 文件</a>。預報地點：臺北市。</footer>
+  </main>
+  <script>
+    (() => {
+      const elements = Object.fromEntries(['location', 'icon', 'condition', 'date', 'high', 'low', 'status', 'next'].map(id => [id, document.getElementById(id)]));
+      const descriptions = {
+        0: ['晴朗', '☀️'], 1: ['大致晴朗', '🌤️'], 2: ['局部多雲', '⛅'], 3: ['陰天', '☁️'],
+        45: ['有霧', '🌫️'], 48: ['有霧', '🌫️'], 51: ['毛毛雨', '🌦️'], 53: ['毛毛雨', '🌦️'], 55: ['毛毛雨', '🌧️'],
+        56: ['凍雨', '🌧️'], 57: ['凍雨', '🌧️'], 61: ['小雨', '🌦️'], 63: ['中雨', '🌧️'], 65: ['大雨', '🌧️'],
+        66: ['凍雨', '🌧️'], 67: ['凍雨', '🌧️'], 71: ['小雪', '🌨️'], 73: ['中雪', '🌨️'], 75: ['大雪', '❄️'],
+        77: ['雪粒', '🌨️'], 80: ['短暫陣雨', '🌦️'], 81: ['陣雨', '🌧️'], 82: ['強陣雨', '🌧️'], 85: ['陣雪', '🌨️'],
+        86: ['強陣雪', '❄️'], 95: ['雷雨', '⛈️'], 96: ['雷雨伴隨冰雹', '⛈️'], 99: ['雷雨伴隨冰雹', '⛈️']
+      };
+      let days = [];
+      let current = -1;
+      const showStatus = (message, isError = false) => { elements.status.textContent = message; elements.status.classList.toggle('error', isError); };
+      const renderDay = day => {
+        const [label, icon] = descriptions[day.code] || ['天氣狀況良好', '🌤️'];
+        elements.location.textContent = '臺北市';
+        elements.icon.textContent = icon;
+        elements.condition.textContent = label;
+        elements.date.textContent = day.date;
+        elements.high.textContent = `${Math.round(day.high)}°C`;
+        elements.low.textContent = `${Math.round(day.low)}°C`;
+      };
+      const load = async () => {
+        elements.next.disabled = true;
+        showStatus('載入中…');
+        try {
+          const response = await fetch('/api/天氣預報', { headers: { Accept: 'application/json' } });
+          const data = await response.json();
+          if (!response.ok || !data.ok || !Array.isArray(data.forecast) || data.forecast.length === 0) throw new Error(data.error || '天氣資料無法載入，請稍後再試。');
+          days = data.forecast;
+          current = (current + 1) % days.length;
+          renderDay(days[current]);
+          showStatus(`資料來源：${data.source}。預報資料載入成功。`);
+          elements.next.disabled = false;
+        } catch (error) {
+          showStatus(error instanceof TypeError ? '圖片／資料無法載入，請檢查網路後重試。' : (error.message || '天氣資料無法載入，請稍後再試。'), true);
+        } finally {
+          elements.next.disabled = false;
+        }
+      };
+      elements.next.addEventListener('click', load);
+      load();
+    })();
+  </script>
+</body>
+</html>
